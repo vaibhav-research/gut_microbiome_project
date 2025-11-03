@@ -149,6 +149,7 @@ We welcome contributions to this project! Follow these steps to contribute effec
 ### 4.5. Need Help?
 
 If you have questions or need guidance:
+*   **Want to be assigned to an issue?** Join the [huggingscience Discord server](https://discord.com/invite/VYkdEVjJ5J) and communicate your interest in the relevant channel!
 *   Open an issue on GitHub to discuss your proposed changes.
 *   Reach out to the maintainers for clarification on architectural decisions.
 *   Review the `README.md` and `CONFIG_GUIDE.md` for additional context.
