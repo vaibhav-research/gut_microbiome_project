@@ -64,7 +64,7 @@ Once the core components are modularized, they can be integrated into the main e
 
 3.  **Address Issue \#7: Implement training script**
     *   Refine `train.py` to import the new data loader and model modules.
-    *   Implement the final, clean training loop, including the 5-fold Stratified CV and cohort balancing logic.
+    *   Implement the final, clean training loop, including the K-fold Stratified CV and cohort balancing logic.
     *   Ensure the script saves the trained model artifacts.
 
 4.  **Address Issue \#5: Implement evaluation script**
