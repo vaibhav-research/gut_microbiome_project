@@ -22,7 +22,7 @@ Before running the script, you need to download the required parquet files:
 ### Usage
 
 ```bash
-python dna_from_srs.py --srs_id <SRS_ID>
+uv run dna_from_srs.py --srs_id <SRS_ID>
 ```
 
 ### Inputs
@@ -40,7 +40,7 @@ python dna_from_srs.py --srs_id <SRS_ID>
 ### Example
 
 ```bash
-python dna_from_srs.py --srs_id SRS7011253
+uv run dna_from_srs.py --srs_id SRS7011253
 ```
 
 This will create `dna_sequences/SRS7011253.csv` with all OTU-DNA mappings for that sample.
