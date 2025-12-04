@@ -11,8 +11,6 @@ data:
   dna_csv_dir: "data_preprocessing/dna_sequences"
   dna_embeddings_dir: "data_preprocessing/dna_embeddings"
   microbiome_embeddings_dir: "data_preprocessing/microbiome_embeddings"
-  #embeddings_h5: "data_preprocessing/dna_embeddings/prokbert_embeddings.h5"
-  #microbiome_embeddings_h5: "data_preprocessing/microbiome_embeddings/microbiome_embeddings.h5"
   # MicrobiomeTransformer checkpoint path
   mirobiome_transformer_checkpoint: "data/checkpoint_epoch_0_final_epoch3_conf00.pt"
   # ProkBERT model name
