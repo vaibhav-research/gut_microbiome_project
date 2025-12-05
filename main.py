@@ -19,13 +19,6 @@ if __name__ == "__main__":
     classifier = SKClassifier(config['model']['classifier'], config)
     classifier.cross_validate(X, y, k=10)
 
-    classifier.fit(X, y)
-
-    classifier.score(X, y)
-    # train model
-    train_classifier()
-    # evaluate model
-    evaluate_classifier()
     # save model
-    save_model()
+    #classifier.save_model()
     ...

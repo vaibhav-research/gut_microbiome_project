@@ -9,6 +9,7 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import numpy as np
 from typing import Dict, Any
 import matplotlib.pyplot as plt
+import joblib
 
 class SKClassifier:
     def __init__(self, classifier_type: str, config: Dict[str, Any]):
@@ -68,8 +69,15 @@ class SKClassifier:
             f.write("\n")
             f.write("ROC-AUC Score: " + str(roc_auc))
 
-    def fit(self, X: np.ndarray, y: np.ndarray):
+    def fit(self, X: np.ndarray, y: np.ndarray) -> None:
+        print("Fitting classifier...")
         self.classifier.fit(X, y)
+        print("Classifier fitted.")
+
+    def save_model(self, path: str) -> None:
+        print("Saving model...")
+        joblib.dump(self.classifier, path)
+        print("Model saved.")
         
-    def predict(self, X: np.ndarray):
+    def predict(self, X: np.ndarray) -> np.ndarray:
         return self.classifier.predict(X)

@@ -39,7 +39,7 @@ The project follows a modular structure to separate concerns and facilitate coll
 | `evaluation/` | Scripts for model performance assessment, metric calculation, and visualization. |
 | `train.py` | The main entry point for running the model training pipeline. |
 | `main.py` | The overall execution script for the entire project workflow. |
-| `data_loading.py` | Unified data loading pipeline with automatic artifact generation (DNA CSVs, embeddings H5) and PyTorch DataLoader integration. |
+| `data_loading.py` | Unified data loading pipeline with automatic artifact generation (DNA CSVs, embeddings H5) and data loading |
 | `config.yaml` | Centralized YAML configuration file for all run parameters (data paths, model settings, evaluation metrics). |
 | `utils.py` | Helper functions including configuration loading from YAML. |
 
@@ -47,141 +47,107 @@ The project follows a modular structure to separate concerns and facilitate coll
 
 To set up the project environment and begin contributing:
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/AI-For-Food-Allergies/gut_microbiome_project.git
-    cd gut_microbiome_project
-    ```
-2.  **Install dependencies:**
-    ```bash
-    # Using pip
-    pip install -e .
-    
-    # Or using uv (if installed)
-    uv sync
-    ```
-3.  **Download the Microbiome Transformer checkpoint:**
-    
-    The pre-trained Microbiome Transformer model checkpoint can be downloaded from Figshare:
-    
+### 1. Installation
+
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/AI-For-Food-Allergies/gut_microbiome_project.git
+cd gut_microbiome_project
+
+# Using pip
+pip install -e .
+
+# Or using uv (recommended)
+uv sync
+```
+
+### 2. Data Setup
+
+1.  **Download Resources**:
+    Download the dataset and the pre-trained Microbiome Transformer checkpoint from Figshare:
     [Model and Data for diabimmune example](https://figshare.com/articles/dataset/Model_and_Data_for_diabimmune_example/30429055?file=58993825)
 
-4.  **Configure your project:**
-    
-    All run parameters are managed through `config.yaml`. This includes:
-    - Data paths (dataset location, checkpoint paths)
-    - Model settings (classifier type, hyperparameters)
-    - Evaluation parameters (metrics, cross-validation settings)
-    
-    Edit `config.yaml` to customize these parameters for your needs:
-    ```yaml
-    data:
-      dataset_path: "path/to/your/data"
-    
-    model:
-      classifier: "linear regression"
-      classifier_params:
-        max_iter: 1000
-        solver: "lbfgs"
-    
-    evaluation:
-      metrics: ["accuracy", "precision", "recall", "f1", "roc_auc"]
-      cv_folds: 5
+2.  **Place Files**:
+    Unzip and organize the downloaded files into the project directory structure as follows:
+
+    ```text
+    gut_microbiome_project/
+    ├── data/
+    │   └── checkpoint_epoch_0_final_epoch3_conf00.pt  <-- Place Model Checkpoint here
+    ├── data_preprocessing/
+    │   ├── mapref_data/
+    │   │   ├── samples-otus-97.parquet              <-- Place Parquet files here
+    │   │   └── otus_97_to_dna.parquet
+    │   └── datasets/
+    │       └── goldberg/                            <-- Place your dataset CSVs here
+    │           └── T3.csv
     ```
 
-## Data Loading Pipeline
+### 3. Usage
 
-The `data_loading.py` module provides a unified pipeline for loading microbiome data ready for training. It automatically handles artifact generation (DNA sequences and embeddings) and provides PyTorch DataLoaders with proper batching and masking for variable-length sequences.
+The project uses a centralized `config.yaml` to manage data paths and model parameters.
 
-### Quick Start
+#### Configuration (`config.yaml`)
+Ensure your `config.yaml` points to the correct locations. Key parameters:
+-   `dataset_path`: Path to your sample metadata CSV (must contain sample IDs and labels).
+-   `mirobiome_transformer_checkpoint`: Path to the `.pt` file downloaded above.
 
-```python
-from pathlib import Path
-from data_loading import get_dataloader
+#### extracting Microbiome Embeddings
+The data loading pipeline automatically handles the conversion of raw microbiome data into embeddings. This is handled by the `load_dataset_df` function in `data_loading.py`.
 
-# Simple usage - everything handled automatically
-dataloader = get_dataloader(
-    Path("data_preprocessing/datasets/sample_data.csv"),
-    batch_size=4,
-    shuffle=True
-)
+The pipeline performs the following steps automatically:
+1.  **Extract Sequences**: Maps sample IDs to DNA sequences using the parquet map files.
+2.  **Generate DNA Embeddings**: Uses `ProkBERT` to embed each DNA sequence.
+3.  **Generate Microbiome Embeddings**: Uses the `MicrobiomeTransformer` to aggregate DNA embeddings into a single vector per sample.
+4.  **Create DataFrame**: Returns a pandas DataFrame containing Sample IDs, Labels, and Embeddings.
 
-# Iterate over batches
-for batch in dataloader:
-    embeddings = batch['embeddings']  # (batch_size, max_otus, 384)
-    labels = batch['labels']          # (batch_size,)
-    mask = batch['mask']              # (batch_size, max_otus) - True for valid, False for padding
-    sids = batch['sids']               # List[str] - sample IDs
-```
-
-### Features
-
-- **Automatic Artifact Generation**: Automatically generates DNA CSV files and embeddings H5 when missing
-- **Caching**: Only generates missing artifacts, reuses existing ones
-- **Variable-Length Sequences**: Handles samples with different numbers of OTUs via padding and masking
-- **Config-Driven**: All paths and settings configurable via `config.yaml`
-
-### Data Format
-
-Your sample CSV file should have two columns:
-- **Sample ID column** (e.g., `sid`, `SID`, `srs_id`): Unique identifier for each sample
-- **Label column** (e.g., `label`, `Label`, `y`): Binary label (0/1) for classification
-
-Example:
-```csv
-sid,label
-DRS061545,0
-DRS061546,1
-DRS061547,0
-```
-
-### Configuration
-
-Configure data paths and embedding settings in `config.yaml`:
-
-```yaml
-data:
-  # Parquet files mapping SRS → OTU → DNA
-  srs_to_otu_parquet: "data_preprocessing/mapref_data/samples-otus-97.parquet"
-  otu_to_dna_parquet: "data_preprocessing/mapref_data/otus_97_to_dna.parquet"
-  
-  # Output directories
-  dna_csv_dir: "data_preprocessing/dna_sequences"
-  embeddings_h5: "data_preprocessing/dna_embeddings/prokbert_embeddings.h5"
-  
-  # Embedding generation settings
-  embedding_model: "neuralbioinfo/prokbert-mini-long"
-  batch_size_embedding: 32
-  device: "cpu"  # cpu, cuda, or mps
-```
-
-### Pipeline Workflow
-
-1. **Input**: Sample CSV file with SID and label columns
-2. **Step 1**: Check if DNA CSV files exist for each sample, generate missing ones
-3. **Step 2**: Check if embeddings H5 exists, generate from DNA CSVs if missing
-4. **Step 3**: Load embeddings and labels, create PyTorch Dataset
-5. **Output**: DataLoader with batched data ready for training
-
-### Advanced Usage
+You can trigger this pipeline manually or use it in your scripts:
 
 ```python
-from data_loading import MicrobiomeDataset, load_dataset
+from data_loading import load_dataset_df
+from utils import load_config
 
-# Load dataset without DataLoader
-X_list, y_list, sids_list = load_dataset(
-    Path("data_preprocessing/datasets/sample_data.csv")
-)
+config = load_config()
+dataset_df = load_dataset_df(config)
 
-# Create custom Dataset
-dataset = MicrobiomeDataset(
-    Path("data_preprocessing/datasets/sample_data.csv"),
-    embeddings_h5_path=None  # Auto-generates if None
-)
+print(dataset_df.head())
+# Columns: sid, label, embedding
 ```
 
-For more details, see the docstrings in `data_loading.py`.
+> [!NOTE]
+> The first run will take some time to generate the embeddings. Subsequent runs will use the cached H5 files in `data_preprocessing/dna_embeddings` and `data_preprocessing/microbiome_embeddings`.
 
+#### Training the Classifier
+To train and evaluate the model, you can use the `main.py` script, which orchestrates data loading and model training.
+
+The `SKClassifier` class simplifies model instantiation and cross-validation:
+
+```python
+# main.py usage
+from data_loading import load_dataset_df
+from modules.classifier import SKClassifier
+from utils import load_config, prepare_data
+
+# 1. Load Configuration
+config = load_config()
+
+# 2. Load & Prepare Data (Automatically generates embeddings if needed)
+dataset_df = load_dataset_df(config)
+X, y = prepare_data(dataset_df)
+
+# 3. Instantiate & Train Model
+# Classifier type is defined in config.yaml (e.g., 'logreg', 'rf', 'svm')
+classifier = SKClassifier(config['model']['classifier'], config)
+
+# 4. Evaluate (Cross-Validation)
+classifier.cross_validate(X, y, k=5)
+```
+
+To run the full pipeline:
+```bash
+python main.py
+```
     
 
 ## 🤝 Contributing
