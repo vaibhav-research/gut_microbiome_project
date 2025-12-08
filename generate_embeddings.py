@@ -2,8 +2,9 @@ import os
 from pathlib import Path
 from tqdm import tqdm
 import torch
+import pandas as pd
+import pyarrow.parquet as pq
 from data_loading import (
-    generate_dna_csvs_for_samples, 
     generate_dna_embeddings_h5, 
     generate_microbiome_embeddings_h5, 
     sanity_check_dna_and_microbiome_embeddings,
@@ -18,8 +19,8 @@ SRS_TO_OTU_PARQUET = Path("data_preprocessing/mapref_data/samples-otus-97.parque
 OTU_TO_DNA_PARQUET = Path("data_preprocessing/mapref_data/otus_97_to_dna.parquet")
 MICROBIOME_CHECKPOINT = Path("data/checkpoint_epoch_0_final_epoch3_conf00.pt")
 EMBEDDING_MODEL = "neuralbioinfo/prokbert-mini-long"
-BATCH_SIZE = 6
-DEVICE = "cpu"  # Set to 'cuda' or 'mps' if available
+BATCH_SIZE = 8
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu" # or mps optionally
 
 def build_paths(base_dir: Path, csv_path: Path):
     """
@@ -40,6 +41,88 @@ def build_paths(base_dir: Path, csv_path: Path):
     
     return sequences_dir, dna_embeddings_dir, microbiome_embeddings_dir
 
+def optimized_generate_dna_csvs(sids: list, srs_to_otu_parquet: Path, otu_to_dna_parquet: Path, sequences_dir: Path):
+    """
+    Optimized version of generate_dna_csvs_for_samples that loads data in bulk
+    to avoid N_samples * N_otus file reads.
+    """
+    
+    # 1. Check which SIDs actually need generation to avoid redundant work
+    missing_sids = [sid for sid in sids if not (sequences_dir / f"{sid}.csv").exists()]
+    
+    if not missing_sids:
+        print(f"  All {len(sids)} DNA CSVs already exist, skipping generation")
+        return
+
+    print(f"  Generating {len(missing_sids)} missing DNA CSV files...")
+    sequences_dir.mkdir(parents=True, exist_ok=True)
+
+    # 2. Load OTU -> DNA mapping (small enough for memory ~80MB on disk)
+    print("  Loading OTU to DNA mapping...")
+    try:
+        otu_dna_df = pd.read_parquet(otu_to_dna_parquet)
+        # Convert to dictionary for O(1) access: otu_id -> dna_sequence
+        # Assuming columns are 'otu_97_id' and 'dna_sequence' based on data_loading.py checks
+        otu_to_dna_map = dict(zip(otu_dna_df['otu_97_id'], otu_dna_df['dna_sequence']))
+        del otu_dna_df # Free memory
+    except Exception as e:
+        print(f"  Error loading OTU parquet: {e}")
+        return
+
+    # 3. Process SIDs in batches to respect memory while avoiding single-row reads
+    # 'srs_to_otu_parquet' can be large (2.4GB). 
+    # We filter by 'srs_id' in missing_sids using pyarrow filters which is efficient.
+    
+    batch_size = 500 
+    
+    for i in tqdm(range(0, len(missing_sids), batch_size), desc="  Processing sample batches"):
+        batch_sids = missing_sids[i : i + batch_size]
+        
+        try:
+            # Read parquet filtering for this batch of SIDs
+            # filters=[('srs_id', 'in', batch_sids)] is efficient in PyArrow
+            table = pq.read_table(srs_to_otu_parquet, filters=[('srs_id', 'in', batch_sids)])
+            batch_df = table.to_pandas()
+            
+            # Group by srs_id
+            grouped = batch_df.groupby('srs_id')
+            
+            found_sids = set()
+            
+            for srs_id, group in grouped:
+                found_sids.add(srs_id)
+                
+                # Get OTUs
+                otu_ids = group['otu_id'].tolist()
+                
+                # Map to DNA
+                data = []
+                for otu in otu_ids:
+                    # Look up DNA sequence from pre-loaded map
+                    dna = otu_to_dna_map.get(otu)
+                    if dna:
+                        data.append({'otu_id': otu, 'dna_sequence': dna})
+                
+                # Create DataFrame
+                if data:
+                    df_out = pd.DataFrame(data)
+                else:
+                     df_out = pd.DataFrame(columns=['otu_id', 'dna_sequence'])
+                
+                # Save
+                df_out.to_csv(sequences_dir / f"{srs_id}.csv", index=False)
+            
+            # Handle SIDs that were not found in parquet (0 OTUs)
+            for sid in batch_sids:
+                if sid not in found_sids:
+                    # Create empty CSV
+                    pd.DataFrame(columns=['otu_id', 'dna_sequence']).to_csv(sequences_dir / f"{sid}.csv", index=False)
+                    
+        except Exception as e:
+            print(f"  Error processing batch starting with {batch_sids[0]}: {e}")
+            import traceback
+            traceback.print_exc()
+
 def generate_embeddings(csv_path: Path, base_dir: Path):
     print(f"\nProcessing dataset: {csv_path}")
     sequences_dir, dna_embeddings_dir, microbiome_embeddings_dir = build_paths(base_dir, csv_path)
@@ -57,7 +140,7 @@ def generate_embeddings(csv_path: Path, base_dir: Path):
     # We call the generation function directly for the list of SIDs
     if not sequences_dir.exists() or not any(sequences_dir.iterdir()):
         print(f"  Generating DNA CSVs in {sequences_dir}...")
-        generate_dna_csvs_for_samples(
+        optimized_generate_dna_csvs(
             sids,
             SRS_TO_OTU_PARQUET,
             OTU_TO_DNA_PARQUET,
@@ -116,8 +199,8 @@ def generate_embeddings(csv_path: Path, base_dir: Path):
 if __name__ == "__main__":
     # Define input and output directories
   
-    BASE_OUTPUT_DIR = Path("generated_embeddings") # where output will be saved
-    DATASET_DIR = Path("PATH_TO_DATASET_FOLDER") # directory containing the CSV files
+    BASE_OUTPUT_DIR = Path("YOUR_OUTPUT_DIR") # where output will be saved
+    DATASET_DIR = Path("YOUR_DATASET_DIR") # directory containing the CSV files
 
     if not DATASET_DIR.exists():
         print(f"Dataset directory {DATASET_DIR} does not exist. Please check path.")

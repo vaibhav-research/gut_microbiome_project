@@ -284,8 +284,12 @@ def generate_dna_embeddings_h5(
                     
                     # Get embeddings
                     outputs = model(**inputs)
-                    # Mean pooling over sequence length
-                    embeddings = outputs.last_hidden_state.mean(dim=1).cpu().numpy()
+                    # Masked mean over real tokens (exclude padding)
+                    hidden = outputs.last_hidden_state 
+                    mask = inputs["attention_mask"].unsqueeze(-1)  
+                    denom = mask.sum(dim=1).clamp(min=1e-9) 
+                    embeddings = (hidden * mask).sum(dim=1) / denom  
+                    embeddings = embeddings.cpu().numpy()
                 
                 # Save each embedding with its OTU ID
                 for i, otu_id in enumerate(batch_otu_ids):
