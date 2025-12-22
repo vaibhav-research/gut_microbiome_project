@@ -35,3 +35,6 @@ data_preprocessing/datasets/diabimmune/*
 data_preprocessing/datasets/goldberg/*
 data_preprocessing/datasets/tanaka/*
 data_preprocessing/datasets/gadir/*
+
+# Evaluation results
+eval_results/

@@ -1,130 +1,212 @@
-# Contribution guideline
+# Contribution Guidelines
 
-This document provides an analysis of the current code structure in the `modularize-training` branch of the `AI-For-Food-Allergies/gut_microbiome_project` repository and outlines the necessary interventions as defined by the open GitHub issues.
+Welcome to the Gut Microbiome Project! This document provides an overview of the codebase structure and guidelines for contributing effectively.
 
 ## Table of Contents
 
-1. [Current Code Structure](#1-current-code-structure)
+1. [Code Structure](#1-code-structure)
+2. [How to Contribute](#2-how-to-contribute)
+3. [Development Workflow](#3-development-workflow)
+4. [Code Standards](#4-code-standards)
+5. [Testing Your Changes](#5-testing-your-changes)
 
-2. [Open issues](#2-open-issues)
-3. [Development Roadmap](#3-development-roadmap)
-
-4. [How to Contribute](#4-how-to-contribute)
-
-
-## 1. Current Code Structure
+## 1. Code Structure
 
 ### 1.1. High-Level Overview
 
-The project is structured around the core components of a machine learning workflow, with dedicated directories and files for each step.
+The project is organized into a modular ML pipeline with clear separation of concerns:
 
 | Component | Directory/File | Purpose |
 | :--- | :--- | :--- |
-| **Data Preparation** | `data_preprocessing/` | Contains logic for cleaning, transforming, and preparing raw data. |
-| **Model Components** | `modules/` | Intended to house reusable classes and functions for the model architecture (e.g., `MicrobiomeTransformer`). |
-| **Training/Execution** | `train.py`, `main.py` | The main entry points for running the training and overall pipeline. |
-| **Evaluation** | `evaluation/` | Intended to house scripts or modules for model performance assessment. |
-| **Configuration** | `config.yaml`, `pyproject.toml` | YAML configuration for run parameters (data paths, model settings, evaluation metrics) and project dependencies. |
-| **Utilities** | `utils.py`, `data_loading.py` | Helper functions for configuration loading and data I/O. |
-| **Examples/Legacy** | `example_scripts/` | Example scripts training a classifier based on MicrobiomeTransformer(`predict_milk.py`, `predict_hla.py`) |
+| **Configuration** | `config.yaml` | Centralized YAML configuration for all parameters (data paths, model settings, hyperparameters). |
+| **Data Pipeline** | `data_loading.py` | Unified data loading pipeline with automatic artifact generation (DNA CSVs, embeddings). |
+| **Embedding Generation** | `generate_embeddings.py` | Standalone script for batch generation of embeddings across multiple datasets. |
+| **Model Components** | `modules/` | Core model classes: `MicrobiomeTransformer` (embedding model) and `SKClassifier` (classification). |
+| **Execution** | `main.py` | Main entry point for training and evaluation with multiple modes (simple eval, grid search). |
+| **Utilities** | `utils/` | Helper functions for data preparation (`data_utils.py`) and evaluation (`evaluation_utils.py`). |
+| **Data Preprocessing** | `data_preprocessing/` | Dataset CSVs, preprocessing scripts, mapping files, and generated embeddings. |
+| **Examples** | `example_scripts/` | Example scripts demonstrating specific use cases. |
 
-### 1.2. Modular approach
+### 1.2. Key Design Principles
 
+*   **Configuration-Driven:** All parameters are managed through `config.yaml` - avoid hardcoding values.
+*   **Automatic Caching:** Embeddings are generated once and cached in H5 files for reuse.
+*   **Modular Components:** Each module has a single responsibility (data loading, model, evaluation).
+*   **Flexible Evaluation:** Support for multiple classifiers, cross-validation, and hyperparameter tuning.
 
-*   **Separation of Concerns:** The creation of `data_preprocessing/`, `modules/`, and `evaluation/` clearly separates the data, model, and assessment logic.
-*   **Centralized Execution:** `main.py` and `train.py` serve as clean entry points, abstracting the complexity of the underlying modules.
-*   **Data Handling:** Use `data_loading.py` to separate the I/O logic from the core ML algorithms.
+### 1.3. Data Pipeline Flow
 
-## 2. Open issues
+```
+Sample CSV (sid, label)
+    ↓
+[data_loading.py] Checks for existing artifacts
+    ↓
+DNA Sequences (CSV) → DNA Embeddings (H5) → Microbiome Embeddings (H5)
+    ↓                      ↓                           ↓
+  (OTU to DNA)     (ProkBERT Model)      (MicrobiomeTransformer)
+    ↓
+DataFrame (sid, label, embedding)
+    ↓
+[main.py] Train & Evaluate Classifier
+    ↓
+Results (metrics, plots, confusion matrices)
+```
 
-| Issue ID | Title | Description of Intervention |
-| :--- | :--- | :--- |
-| \#8 | **Implement data loading** | This task involves refactoring the data loading logic into a dedicated, robust module that handles all I/O, ID alignment, and data structure creation, likely consolidating logic from `data_loading.py` and `utils.py`. |
-| \#7 | **Implement training script** | This task requires finalizing and centralizing the training loop logic within `train.py`, ensuring it correctly imports the necessary data loader and model modules to execute the full training process (e.g., cross-validation, hyperparameter tuning). |
-| \#6 | **Implement modules** | This task is to complete the implementation of all reusable model components (e.g., the `MicrobiomeTransformer` wrapper, feature extraction logic) and place them within the `modules/` directory, decoupling the model logic from the training script. |
-| \#5 | **Implement evaluation script** | This task is to develop a dedicated script or module (e.g., `evaluation/evaluate.py`) that takes a trained model and test data, and produces the required metrics and visualizations, replacing the evaluation logic currently embedded in the legacy scripts. |
+### 1.4. Module Details
 
-## 3. Development Roadmap
-### Phase 1: Core Module Implementation
+#### `data_loading.py`
+The unified data loading pipeline that:
+- Loads sample metadata (CSVs with sample IDs and labels)
+- Generates DNA sequence CSVs from parquet mapping files
+- Generates ProkBERT embeddings for each DNA sequence
+- Aggregates DNA embeddings into per-sample microbiome embeddings
+- Returns a pandas DataFrame ready for training
 
-The first step is to build the reusable components that the main scripts will rely on.
+**Key Functions:**
+- `load_dataset_df(config)` - Main entry point, returns DataFrame with embeddings
+- `generate_dna_embeddings_h5()` - Generate ProkBERT embeddings
+- `generate_microbiome_embeddings_h5()` - Generate MicrobiomeTransformer embeddings
 
-1.  **Address Issue \#6: Implement modules**
-    *   Define and implement the core model classes (e.g., `MicrobiomeModel`, `FeatureExtractor`) in the `modules/` directory.
-    *   Ensure these modules are clean, well-documented, and only handle model-related logic.
+#### `modules/model.py`
+Contains the `MicrobiomeTransformer` class that wraps the pre-trained foundation model for aggregating DNA embeddings into a single microbiome embedding per sample.
 
-2.  **Address Issue \#8: Implement data loading**
-    *   Work on the `data_loading.py` file.
-    *   The goal is to have a single, clean interface for retrieving processed data ready for training.
+#### `modules/classifier.py`
+Contains the `SKClassifier` class that provides a unified interface for multiple scikit-learn classifiers:
+- Logistic Regression (`logreg`)
+- Random Forest (`rf`)
+- Support Vector Machine (`svm`)
+- Multi-Layer Perceptron (`mlp`)
 
-### Phase 2: Pipeline Integration
+**Key Methods:**
+- `evaluate_model(X, y, cv)` - Simple cross-validation evaluation
+- `grid_search_with_final_eval()` - Hyperparameter tuning with unbiased final evaluation
 
-Once the core components are modularized, they can be integrated into the main execution scripts.
+#### `utils/evaluation_utils.py`
+Comprehensive evaluation utilities including:
+- `EvaluationMetrics` - Data class for storing predictions and metrics
+- `ResultsManager` - Automated saving of results, plots, and reports
+- Functions for generating ROC curves, confusion matrices, and classification reports
 
-3.  **Address Issue \#7: Implement training script**
-    *   Refine `train.py` to import the new data loader and model modules.
-    *   Implement the final, clean training loop, including the K-fold Stratified CV and cohort balancing logic.
-    *   Ensure the script saves the trained model artifacts.
+#### `main.py`
+Main execution script with multiple modes:
+- `run_evaluation()` - Simple evaluation without hyperparameter tuning
+- `run_grid_search_experiment()` - Grid search with proper unbiased evaluation
 
-4.  **Address Issue \#5: Implement evaluation script**
-    *   Create `evaluation/evaluate.py`.
-    *   Implement the logic to load a trained model, load the test data using the new data loader, compute metrics, and generate the required plots (`milk_cm.png`, `fla_cm.png`).
-    *   This script should be runnable independently to assess any trained model.
+## 2. How to Contribute
 
-### Phase 3: Cleanup and Finalization
+We welcome contributions! Follow these steps to get started.
 
-5.  **Configuration Refinement:** The project now uses `config.yaml` for centralized parameter management (handled via `utils.py`). Ensure all new modules and scripts correctly reference the configuration parameters by importing and using the `load_config()` function from `utils.py`.
-6.  **Documentation:** Update the main `README.md` to reflect the new modular structure and provide clear instructions on how to run the `train.py` and `evaluation/evaluate.py` scripts.
-7.  **Deprecation:** Remove or clearly mark the legacy/notebook-like scripts in `example_scripts/` to prevent confusion.
+### 2.1. Getting Started
 
-## 4. How to Contribute
+1.  **Fork the Repository:** Create your own fork on GitHub.
 
-We welcome contributions to this project! Follow these steps to contribute effectively:
-
-### 4.1. Getting Started
-
-1.  **Fork the Repository:** Create your own fork of the project on GitHub.
-2.  **Clone Your Fork:** Clone the repository to your local machine:
+2.  **Clone Your Fork:**
     ```bash
     git clone https://github.com/YOUR_USERNAME/gut_microbiome_project.git
     cd gut_microbiome_project
     ```
-3.  **Set Up the Environment:** Install the project dependencies using your preferred package manager:
+
+3.  **Set Up the Environment:**
     ```bash
+    # Using pip
     pip install -e .
-    ```
-    or if using `uv`:
-    ```bash
+    
+    # Or using uv (recommended)
     uv sync
     ```
 
-### 4.2. Making Changes
+4.  **Download Required Data:**
+    Follow the setup instructions in the [main README](readme.md) to download:
+    - Dataset CSVs from Google Drive
+    - Model checkpoint from Figshare
+    - Parquet mapping files from Figshare
 
-1.  **Create a Branch:** Always create a new branch for your work. Use a descriptive name:
-    ```bash
-    git checkout -b feature/your-feature-name
+### 2.2. Finding Something to Work On
+
+1.  **Check Open Issues:** Browse the [GitHub Issues](https://github.com/AI-For-Food-Allergies/gut_microbiome_project/issues) page for tasks.
+2.  **Join Discord:** Connect with the team on the [huggingscience Discord](https://discord.com/invite/VYkdEVjJ5J) to discuss ideas and get assigned to issues.
+3.  **Suggest Improvements:** Have an idea? Open a new issue to discuss it before implementing.
+
+### 2.3. Common Contribution Areas
+
+- **New Datasets:** Add preprocessing scripts for additional microbiome datasets
+- **Model Improvements:** Experiment with new architectures or embedding strategies
+- **Evaluation Metrics:** Add new evaluation methods or visualizations
+- **Documentation:** Improve README, docstrings, or add tutorials
+- **Bug Fixes:** Fix reported issues or edge cases
+- **Performance:** Optimize data loading or embedding generation
+
+## 3. Development Workflow
+
+### 3.1. Create a Branch
+
+Always create a new branch for your work:
+
+```bash
+# For new features
+git checkout -b feature/descriptive-feature-name
+
+# For bug fixes
+git checkout -b fix/issue-number-description
+
+# For documentation
+git checkout -b docs/what-you-are-documenting
+```
+
+### 3.2. Make Your Changes
+
+Follow these guidelines while coding:
+
+1.  **Use Configuration System:** All parameters should come from `config.yaml`. Never hardcode paths or hyperparameters.
+    ```python
+    # Good
+    from utils.data_utils import load_config
+    config = load_config()
+    dataset_path = config['data']['dataset_path']
+    
+    # Bad
+    dataset_path = "data_preprocessing/datasets/diabimmune/Month_2.csv"
     ```
-    or
-    ```bash
-    git checkout -b fix/issue-number-description
+
+2.  **Write Modular Code:** Keep functions focused on a single task. Extract reusable logic into utility functions.
+
+3.  **Add Type Hints:** Use type annotations for function parameters and return values.
+    ```python
+    def load_embeddings(h5_path: Path) -> Dict[str, np.ndarray]:
+        """Load embeddings from H5 file."""
+        ...
     ```
 
-2.  **Follow the Development Roadmap:** Refer to Section 3 to understand the current priorities and ensure your contribution aligns with the project goals.
+4.  **Document Your Code:** Add docstrings to functions and classes explaining purpose, arguments, and return values.
 
-3.  **Write Clean Code:**
+5.  **Handle Errors Gracefully:** Add try-except blocks for file I/O and provide helpful error messages.
 
-    *   Keep functions focused and modular.
-    *   Use type hints where appropriate.
-    *   **Use the configuration system:** All parameters should be managed through `config.yaml`. Import and use the `load_config()` function from `utils.py` rather than hardcoding values.
+### 3.3. Test Your Changes
 
-4.  **Test Your Changes:** Ensure your code works as expected and doesn't break existing functionality.
+Before submitting:
 
-### 4.3. Submitting Your Contribution
+1.  **Run the Pipeline:** Test your changes with a small dataset:
+    ```bash
+    # Edit config.yaml to use a small dataset
+    python main.py
+    ```
 
-1.  **Commit Your Changes:** Write clear, concise commit messages:
+2.  **Check Multiple Scenarios:** Test edge cases (empty samples, missing data, etc.)
+
+3.  **Verify Output:** Ensure results are saved correctly in `eval_results/`
+
+4.  **Test with Different Configs:** Try different classifiers and parameters
+
+### 3.4. Submit Your Contribution
+
+1.  **Commit Your Changes:**
     ```bash
     git add .
-    git commit -m "Add feature: brief description of what you did"
+    git commit -m "Add feature: brief description
+    
+    - Detail 1
+    - Detail 2
+    - Closes #issue_number"
     ```
 
 2.  **Push to Your Fork:**
@@ -133,25 +215,208 @@ We welcome contributions to this project! Follow these steps to contribute effec
     ```
 
 3.  **Open a Pull Request:**
-    *   Navigate to the original repository on GitHub.
-    *   Click "New Pull Request" and select your branch.
-    *   Provide a clear description of your changes, referencing any related issues (e.g., "Closes #8").
-    *   Wait for review and address any feedback.
+    - Navigate to the original repository on GitHub
+    - Click "New Pull Request" and select your branch
+    - Provide a clear description of your changes
+    - Reference any related issues (e.g., "Closes #42")
+    - Wait for review and address feedback
 
-### 4.4. Contribution Guidelines
+## 4. Code Standards
 
-*   **Focus on Open Issues:** Check the issues listed in Section 2 and prioritize work that addresses them.
-*   **Keep PRs Focused:** Each pull request should address a single issue or feature.
-*   **Document Your Work:** Update relevant documentation (README, docstrings) as needed.
-*   **Be Responsive:** Respond to code review comments and be open to suggestions.
-*   **Respect the Structure:** Follow the modular architecture outlined in this document.
+### 4.1. Python Style
 
-### 4.5. Need Help?
+- Follow PEP 8 style guidelines
+- Use meaningful variable names (`embedding_dim` not `ed`)
+- Keep lines under 100 characters when possible
+- Use 4 spaces for indentation
 
-If you have questions or need guidance:
-*   **Want to be assigned to an issue?** Join the [huggingscience Discord server](https://discord.com/invite/VYkdEVjJ5J) and communicate your interest in the relevant channel!
-*   Open an issue on GitHub to discuss your proposed changes.
-*   Reach out to the maintainers for clarification on architectural decisions.
-*   Review the `README.md` and `CONFIG_GUIDE.md` for additional context.
+### 4.2. Configuration Management
 
-Thank you for contributing to the gut microbiome project!
+**Always use `config.yaml` for:**
+- File paths (datasets, checkpoints, output directories)
+- Model hyperparameters
+- Training parameters (batch size, learning rate)
+- Evaluation settings (CV folds, metrics)
+
+**Never hardcode:**
+- File paths
+- Hyperparameters
+- Device settings (cpu/cuda/mps)
+
+### 4.3. File Organization
+
+When adding new functionality:
+
+- **Data Processing:** Add to `data_loading.py` or create a new script in `data_preprocessing/`
+- **Model Logic:** Add to `modules/model.py` or `modules/classifier.py`
+- **Evaluation:** Add to `utils/evaluation_utils.py`
+- **Utilities:** Add to `utils/data_utils.py` or create a new utility module
+- **Examples:** Add complete examples to `example_scripts/`
+
+### 4.4. Documentation Standards
+
+**Module Docstrings:**
+```python
+"""
+Brief module description.
+
+This module provides functionality for X, Y, and Z.
+"""
+```
+
+**Function Docstrings:**
+```python
+def process_embeddings(embeddings: np.ndarray, normalize: bool = True) -> np.ndarray:
+    """
+    Process embeddings by normalizing and filtering.
+    
+    Args:
+        embeddings: Array of shape (n_samples, embedding_dim)
+        normalize: Whether to normalize embeddings to unit length
+        
+    Returns:
+        Processed embeddings array
+        
+    Raises:
+        ValueError: If embeddings array is empty
+    """
+    ...
+```
+
+## 5. Testing Your Changes
+
+### 5.1. Quick Test
+
+Test with a small dataset to verify basic functionality:
+
+```yaml
+# config.yaml
+data:
+  dataset_path: "data_preprocessing/datasets/diabimmune/Month_2.csv"  # Small dataset
+  device: "cpu"
+
+evaluation:
+  cv_folds: 3  # Reduce folds for faster testing
+```
+
+```bash
+python main.py
+```
+
+### 5.2. Full Test
+
+Test with multiple datasets and classifiers:
+
+```python
+# In main.py
+run_evaluation(config, classifiers=["logreg", "rf", "svm", "mlp"])
+```
+
+### 5.3. Edge Cases to Test
+
+- Empty samples (samples with no OTUs)
+- Single class in data (should fail gracefully)
+- Missing files (should provide clear error messages)
+- Different dataset structures
+- GPU vs CPU execution
+
+### 5.4. Verify Outputs
+
+Check that results are properly saved:
+```bash
+ls -R eval_results/
+```
+
+Expected structure:
+```
+eval_results/
+└── dataset_name/
+    └── timestamp/
+        ├── Classifier_Name/
+        │   ├── classification_report.txt
+        │   ├── confusion_matrix.png
+        │   ├── roc_curve.png
+        │   └── predictions.csv
+        └── combined_report.txt
+```
+
+## 6. Common Tasks
+
+### 6.1. Adding a New Dataset
+
+1. Preprocess your dataset to CSV format with columns: `sid` (sample ID) and `label`
+2. Place in `data_preprocessing/datasets/<dataset_name>/`
+3. Update `config.yaml` to point to your dataset
+4. Run the pipeline - embeddings will be generated automatically
+
+### 6.2. Adding a New Classifier
+
+1. Add classifier initialization in `modules/classifier.py`:
+    ```python
+    def _get_base_classifier(self):
+        if self.classifier_type == "your_new_classifier":
+            from sklearn.xxx import YourClassifier
+            return YourClassifier()
+    ```
+
+2. Add to `CLASSIFIER_NAMES` mapping
+3. Add hyperparameter grid to `config.yaml`:
+    ```yaml
+    param_grids:
+      your_new_classifier:
+        param1: [value1, value2]
+        param2: [value3, value4]
+    ```
+
+### 6.3. Adding New Evaluation Metrics
+
+Add to `utils/evaluation_utils.py`:
+
+```python
+def calculate_your_metric(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Calculate your custom metric."""
+    ...
+    return metric_value
+```
+
+Update `ResultsManager` to include your metric in reports.
+
+### 6.4. Optimizing Embedding Generation
+
+If embedding generation is slow:
+
+1. Increase batch size (if you have GPU memory):
+    ```yaml
+    data:
+      batch_size_embedding: 16  # or higher
+      device: "cuda"  # or "mps" for Mac
+    ```
+
+2. Pre-generate embeddings in batch using `generate_embeddings.py`
+
+3. Consider parallel processing for multiple datasets
+
+## 7. Need Help?
+
+### Resources
+
+- **Main README:** [readme.md](readme.md) - Usage instructions
+- **Config Guide:** `example_scripts/CONFIG_GUIDE.md` - Configuration details
+- **Example Scripts:** `example_scripts/` - Working examples
+
+### Getting Support
+
+- **Discord:** Join [huggingscience Discord](https://discord.com/invite/VYkdEVjJ5J) for discussions
+- **GitHub Issues:** Open an issue for bugs or feature requests
+- **Pull Request Comments:** Ask questions in your PR
+
+### Before Asking
+
+1. Check if your question is answered in the README or CONFIG_GUIDE
+2. Look at example scripts for similar use cases
+3. Search existing GitHub issues
+4. Try a minimal example to isolate the problem
+
+---
+
+Thank you for contributing to the Gut Microbiome Project! Your work helps advance food allergy prediction research. 🦠🧬

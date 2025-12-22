@@ -34,166 +34,319 @@ The project follows a modular structure to separate concerns and facilitate coll
 
 | Directory/File | Purpose |
 | :--- | :--- |
-| `data_preprocessing/` | Scripts for cleaning, transforming, and preparing raw microbiome data. |
-| `modules/` | Reusable classes and functions for the model architecture (e.g., the `MicrobiomeTransformer` wrapper). |
-| `evaluation/` | Scripts for model performance assessment, metric calculation, and visualization. |
-| `train.py` | The main entry point for running the model training pipeline. |
-| `main.py` | The overall execution script for the entire project workflow. |
-| `data_loading.py` | Unified data loading pipeline with automatic artifact generation (DNA CSVs, embeddings H5) and PyTorch DataLoader integration. |
-| `config.yaml` | Centralized YAML configuration file for all run parameters (data paths, model settings, evaluation metrics). |
-| `utils.py` | Helper functions including configuration loading from YAML. |
+| `data_preprocessing/` | Contains datasets, preprocessing scripts, and generated embeddings. |
+| `data_preprocessing/datasets/` | Raw dataset CSV files (sample IDs and labels). |
+| `data_preprocessing/mapref_data/` | Parquet files mapping sample IDs to OTU IDs to DNA sequences. |
+| `data_preprocessing/dna_sequences/` | Generated DNA sequence CSVs (one per sample). |
+| `data_preprocessing/dna_embeddings/` | Generated ProkBERT embeddings (H5 format). |
+| `data_preprocessing/microbiome_embeddings/` | Generated MicrobiomeTransformer embeddings (H5 format). |
+| `modules/` | Core model classes: `MicrobiomeTransformer` and `SKClassifier`. |
+| `utils/` | Helper utilities for data preparation and evaluation. |
+| `data_loading.py` | Unified data loading pipeline with automatic artifact generation. |
+| `generate_embeddings.py` | Standalone script for batch embedding generation. |
+| `main.py` | Main execution script for training and evaluation. |
+| `config.yaml` | Centralized configuration file for all parameters. |
 
 ## Getting Started
 
-To set up the project environment and begin contributing:
+### 1. Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/AI-For-Food-Allergies/gut_microbiome_project.git
-    cd gut_microbiome_project
-    ```
-2.  **Install dependencies:**
-    ```bash
-    # Using pip
-    pip install -e .
-    
-    # Or using uv (if installed)
-    uv sync
-    ```
-3.  **Download the Microbiome Transformer checkpoint:**
-    
-    The pre-trained Microbiome Transformer model checkpoint can be downloaded from Figshare:
-    
-    [Model and Data for diabimmune example](https://figshare.com/articles/dataset/Model_and_Data_for_diabimmune_example/30429055?file=58993825)
+Clone the repository and install dependencies:
 
-4.  **Configure your project:**
-    
-    All run parameters are managed through `config.yaml`. This includes:
-    - Data paths (dataset location, checkpoint paths)
-    - Model settings (classifier type, hyperparameters)
-    - Evaluation parameters (metrics, cross-validation settings)
-    
-    Edit `config.yaml` to customize these parameters for your needs:
-    ```yaml
-    data:
-      dataset_path: "path/to/your/data"
-    
-    model:
-      classifier: "linear regression"
-      classifier_params:
-        max_iter: 1000
-        solver: "lbfgs"
-    
-    evaluation:
-      metrics: ["accuracy", "precision", "recall", "f1", "roc_auc"]
-      cv_folds: 5
-    ```
+```bash
+git clone https://github.com/AI-For-Food-Allergies/gut_microbiome_project.git
+cd gut_microbiome_project
 
-## Data Loading Pipeline
+# Using pip
+pip install -e .
 
-The `data_loading.py` module provides a unified pipeline for loading microbiome data ready for training. It automatically handles artifact generation (DNA sequences and embeddings) and provides PyTorch DataLoaders with proper batching and masking for variable-length sequences.
-
-### Quick Start
-
-```python
-from pathlib import Path
-from data_loading import get_dataloader
-
-# Simple usage - everything handled automatically
-dataloader = get_dataloader(
-    Path("data_preprocessing/datasets/sample_data.csv"),
-    batch_size=4,
-    shuffle=True
-)
-
-# Iterate over batches
-for batch in dataloader:
-    embeddings = batch['embeddings']  # (batch_size, max_otus, 384)
-    labels = batch['labels']          # (batch_size,)
-    mask = batch['mask']              # (batch_size, max_otus) - True for valid, False for padding
-    sids = batch['sids']               # List[str] - sample IDs
+# Or using uv (recommended)
+uv sync
 ```
 
-### Features
+### 2. Data Setup
 
-- **Automatic Artifact Generation**: Automatically generates DNA CSV files and embeddings H5 when missing
-- **Caching**: Only generates missing artifacts, reuses existing ones
-- **Variable-Length Sequences**: Handles samples with different numbers of OTUs via padding and masking
-- **Config-Driven**: All paths and settings configurable via `config.yaml`
+#### Download Required Files
 
-### Data Format
+You need three types of files to run the pipeline:
 
-Your sample CSV file should have two columns:
-- **Sample ID column** (e.g., `sid`, `SID`, `srs_id`): Unique identifier for each sample
-- **Label column** (e.g., `label`, `Label`, `y`): Binary label (0/1) for classification
+1.  **Datasets**: Sample metadata CSVs (sample IDs and labels)
+    - Download from: [Google Drive - Datasets](https://drive.google.com/drive/folders/1-MM3xOOhaEgILnD-D9IiLBrSBQOlz6QP?usp=sharing)
+    - Available datasets: Tanaka, Goldberg, Diabimmune, Gadir
+    - Place in: `data_preprocessing/datasets/<dataset_name>/`
 
-Example:
-```csv
-sid,label
-DRS061545,0
-DRS061546,1
-DRS061547,0
+2.  **Model Checkpoint**: Pre-trained MicrobiomeTransformer model
+    - Download from: [Google Drive - Model Checkpoint](https://drive.google.com/file/d/1hykscEI4CbQm5ZzPOy9-o4HYjdwHL4u0/view?usp=sharing)
+    - File: `checkpoint_epoch_0_final_epoch3_conf00.pt`
+    - Place in: `data/`
+
+3.  **Parquet Mapping Files**: OTU-to-DNA sequence mappings
+    - Download from: [Google Drive - Parquet Files](https://drive.google.com/drive/folders/1d33c5JtZREoDWRAu14o-fDXOpuriuyQC?usp=sharing)
+    - Files: `samples-otus-97.parquet`, `otus_97_to_dna.parquet`
+    - Place in: `data_preprocessing/mapref_data/`
+
+#### Directory Structure
+
+After setup, your directory should look like this:
+
+```text
+gut_microbiome_project/
+├── data/
+│   └── checkpoint_epoch_0_final_epoch3_conf00.pt
+├── data_preprocessing/
+│   ├── datasets/
+│   │   ├── diabimmune/
+│   │   │   ├── Month_1.csv
+│   │   │   ├── Month_2.csv
+│   │   │   └── ...
+│   │   ├── goldberg/
+│   │   │   ├── T1.csv
+│   │   │   └── ...
+│   │   └── ...
+│   ├── mapref_data/
+│   │   ├── samples-otus-97.parquet
+│   │   └── otus_97_to_dna.parquet
+│   ├── dna_sequences/       # Generated automatically
+│   ├── dna_embeddings/      # Generated automatically
+│   └── microbiome_embeddings/  # Generated automatically
 ```
 
-### Configuration
+### 3. Configuration
 
-Configure data paths and embedding settings in `config.yaml`:
+Edit `config.yaml` to configure your experiment:
 
 ```yaml
 data:
-  # Parquet files mapping SRS → OTU → DNA
-  srs_to_otu_parquet: "data_preprocessing/mapref_data/samples-otus-97.parquet"
-  otu_to_dna_parquet: "data_preprocessing/mapref_data/otus_97_to_dna.parquet"
+  # Point to your dataset
+  dataset_path: "data_preprocessing/datasets/diabimmune/Month_2.csv"
   
-  # Output directories
-  dna_csv_dir: "data_preprocessing/dna_sequences"
-  embeddings_h5: "data_preprocessing/dna_embeddings/prokbert_embeddings.h5"
+  # Model checkpoint (downloaded above)
+  mirobiome_transformer_checkpoint: "data/checkpoint_epoch_0_final_epoch3_conf00.pt"
   
-  # Embedding generation settings
-  embedding_model: "neuralbioinfo/prokbert-mini-long"
-  batch_size_embedding: 32
-  device: "cpu"  # cpu, cuda, or mps
+  # Device: "cpu", "cuda", or "mps"
+  device: "cpu"
+
+model:
+  # Classifier type: "logreg", "rf", "svm", or "mlp"
+  classifier: "logreg"
+  use_scaler: true
+
+evaluation:
+  cv_folds: 5
+  results_output_dir: "eval_results"
 ```
 
-### Pipeline Workflow
+See `config.yaml` for all available options including hyperparameter grids.
 
-1. **Input**: Sample CSV file with SID and label columns
-2. **Step 1**: Check if DNA CSV files exist for each sample, generate missing ones
-3. **Step 2**: Check if embeddings H5 exists, generate from DNA CSVs if missing
-4. **Step 3**: Load embeddings and labels, create PyTorch Dataset
-5. **Output**: DataLoader with batched data ready for training
+## Usage
 
-### Advanced Usage
+### Step 1: Generate Embeddings
+
+The pipeline can generate embeddings automatically or you can pre-generate them for better control and performance.
+
+#### Option A: Automatic Generation (Quick Start)
+
+When you run `main.py`, the pipeline automatically generates any missing embeddings. The first run will be slow, but subsequent runs use cached embeddings.
+
+```bash
+python main.py
+```
+
+#### Option B: Pre-generate Embeddings (Recommended)
+
+For more control and to process multiple datasets efficiently, use the standalone embedding generation script.
+
+**1. Activate your environment:**
+
+```bash
+# Using uv (recommended)
+source .venv/bin/activate
+
+# Or if using pip
+source venv/bin/activate
+```
+
+**2. Configure the script:**
+
+Edit `generate_embeddings.py` and update the dataset path:
 
 ```python
-from data_loading import MicrobiomeDataset, load_dataset
+# Lines near the bottom of generate_embeddings.py
+BASE_OUTPUT_DIR = Path("data_preprocessing")
+DATASET_DIR = Path("data_preprocessing/datasets/diabimmune")  # Change this!
+```
 
-# Load dataset without DataLoader
-X_list, y_list, sids_list = load_dataset(
-    Path("data_preprocessing/datasets/sample_data.csv")
-)
+**3. Run the script:**
 
-# Create custom Dataset
-dataset = MicrobiomeDataset(
-    Path("data_preprocessing/datasets/sample_data.csv"),
-    embeddings_h5_path=None  # Auto-generates if None
+```bash
+python generate_embeddings.py
+```
+
+**What gets generated:**
+
+1. **DNA sequences** (`dna_sequences/`) - CSV files with OTU DNA sequences per sample
+2. **DNA embeddings** (`dna_embeddings/`) - ProkBERT embeddings per OTU (H5 format)
+3. **Microbiome embeddings** (`microbiome_embeddings/`) - Aggregated embeddings per sample (H5 format)
+
+**Important Notes:**
+
+- ⏸️ **Resume capability**: You can safely interrupt (Ctrl+C) and restart. Already generated files are kept.
+- ⚠️ **Incomplete files**: If interrupted during embedding generation (while processing samples), delete the incomplete `.h5` file before restarting.
+- 💡 **Performance tip**: Use GPU by setting `DEVICE = "cuda"` (or `"mps"` for Apple Silicon) in `generate_embeddings.py` for 5-10x speedup.
+- 📖 **Detailed guide**: See `README_EMBEDDINGS.md` for complete instructions, troubleshooting, and file structure details.
+
+### Step 2: Train and Evaluate
+
+Run the main pipeline using `main.py`. There are several modes available:
+
+#### Mode 1: Simple Evaluation (No Hyperparameter Tuning)
+
+Evaluate a single classifier with default parameters:
+
+```python
+# In main.py, uncomment:
+run_evaluation(config)
+```
+
+Run:
+```bash
+python main.py
+```
+
+#### Mode 2: Compare Multiple Classifiers
+
+Evaluate multiple classifiers to compare performance:
+
+```python
+# In main.py, uncomment:
+run_evaluation(config, classifiers=["logreg", "rf", "svm", "mlp"])
+```
+
+#### Mode 3: Grid Search with Unbiased Evaluation (Recommended)
+
+Perform hyperparameter tuning with proper evaluation:
+
+```python
+# In main.py, uncomment:
+run_grid_search_experiment(config, classifiers=["logreg", "rf", "svm", "mlp"])
+```
+
+This uses a two-stage approach:
+1. **Grid Search** (inner CV) - Find best hyperparameters using 5-fold CV with random_state=42
+2. **Final Evaluation** (outer CV) - Evaluate best model on fresh 5-fold CV with random_state=123
+
+This prevents optimistic bias when you don't have a held-out test set.
+
+#### Mode 4: Custom Hyperparameter Grid
+
+Override the config with custom hyperparameters:
+
+```python
+custom_grids = {
+    "logreg": {"C": [0.01, 0.1, 1], "penalty": ["l2"], "solver": ["lbfgs"]},
+    "rf": {"n_estimators": [100, 200], "max_depth": [10, 20]}
+}
+run_grid_search_experiment(config, custom_param_grids=custom_grids)
+```
+
+### Step 3: View Results
+
+Results are saved to `eval_results/<dataset_name>/<timestamp>/`:
+
+```text
+eval_results/
+└── diabimmune/
+    └── Month_2/
+        └── 2024-12-15_14-30-45/
+            ├── Logistic_Regression/
+            │   ├── classification_report.txt
+            │   ├── confusion_matrix.png
+            │   ├── confusion_matrix_normalized.png
+            │   ├── roc_curve.png
+            │   └── predictions.csv
+            ├── Random_Forest/
+            │   └── ...
+            ├── combined_report.txt        # Compare all classifiers
+            ├── comparison_roc_curves.png  # ROC curves on same plot
+            └── best_params_summary.json   # Best hyperparameters
+```
+
+Each classifier folder contains:
+- **Classification Report**: Precision, recall, F1-score per class
+- **Confusion Matrix**: True vs predicted labels (raw and normalized)
+- **ROC Curve**: AUC and true/false positive rates
+- **Predictions**: Sample-level predictions and probabilities
+
+## Advanced Usage
+
+### Using the Data Loading Pipeline Programmatically
+
+```python
+from data_loading import load_dataset_df
+from utils.data_utils import load_config, prepare_data
+
+# Load config
+config = load_config()
+
+# Load dataset (auto-generates embeddings if needed)
+dataset_df = load_dataset_df(config)
+print(dataset_df.head())
+# Output: DataFrame with columns [sid, label, embedding]
+
+# Prepare for sklearn
+X, y = prepare_data(dataset_df)
+# X: numpy array of shape (n_samples, embedding_dim)
+# y: numpy array of labels
+```
+
+### Using the Classifier Programmatically
+
+```python
+from modules.classifier import SKClassifier
+
+# Initialize classifier
+classifier = SKClassifier("logreg", config)
+
+# Simple evaluation
+metrics = classifier.evaluate_model(X, y, cv=5)
+print(metrics.classification_report)
+
+# Grid search
+param_grid = {"C": [0.1, 1, 10], "penalty": ["l2"]}
+metrics = classifier.grid_search_with_final_eval(
+    X, y,
+    param_grid=param_grid,
+    grid_search_cv=5,
+    final_eval_cv=5
 )
 ```
 
-For more details, see the docstrings in `data_loading.py`.
+## Troubleshooting
 
-    
+### Common Issues
+
+1. **Out of Memory**: Reduce `batch_size_embedding` in `config.yaml`
+2. **Slow Embedding Generation**: First run is always slow. Consider using GPU by setting `device: "cuda"` or `device: "mps"`
+3. **Missing Dependencies**: Run `pip install -e .` or `uv sync`
+4. **Parquet File Errors**: Ensure you downloaded both parquet files from Figshare
+
+### Performance Tips
+
+- Use GPU/MPS for faster embedding generation
+- Pre-generate embeddings for multiple datasets in batch
+- Embeddings are cached - only generated once per dataset
+- Start with a small dataset to verify pipeline works
 
 ## 🤝 Contributing
 
 We welcome contributions from researchers, data scientists, and developers!
 
-Please refer to our dedicated **[Contributing Guide](https://github.com/AI-For-Food-Allergies/gut_microbiome_project/blob/master/Contributing.md)** for detailed instructions on:
+Please refer to our dedicated **[Contributing Guide](Contributing.md)** for detailed instructions on:
 
-*   Setting up your development environment.
-*   The current development roadmap and open issues.
-*   Guidelines for submitting pull requests and writing clean code.
+*   Setting up your development environment
+*   Understanding the codebase structure
+*   Guidelines for submitting pull requests and writing clean code
 
-**Want to be assigned to an issue?** Join the [huggingscience Discord server](https://discord.com/invite/VYkdEVjJ5J) and communicate your interest in the relevant channel!
+**Want to get involved?** Join the [huggingscience Discord server](https://discord.com/invite/VYkdEVjJ5J) and communicate your interest!
 
 Thank you for helping us advance the prediction of food allergies!
