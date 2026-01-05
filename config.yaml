@@ -62,3 +62,10 @@ evaluation:
   grid_search_random_state: 42  # random state for grid search CV
   final_eval_random_state: 123  # DIFFERENT random state for final unbiased evaluation
   save_normalized_cm: true
+
+tracking:
+  enabled: true
+  project: "gut-microbiome"
+  run_name: null
+  tags: ["gridsearch", "unbiased-cv"]
+  space_id: null # e.g. "username/space-name" for Trackio Hugging Face Spaces integration
