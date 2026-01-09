@@ -1084,7 +1084,8 @@ def sanity_check_dna_and_microbiome_embeddings(
 
 def create_dataset_df(dataset_path: Path, microbiome_embeddings_dir: Path):
     """
-    Iterate through the csv ids, take the label and use the id to look in the h5 file to get the microbiome embedding, then create a dataframe with the id, label, and microbiome embedding
+    Iterate through the csv ids, take the label and use the id to look in the h5
+    file to get the microbiome embedding, then create a dataframe with the id, label, and microbiome embedding
     Args:
         dataset_path: Path to dataset csv
         microbiome_embeddings_dir: Path to microbiome embeddings directory
@@ -1127,8 +1128,11 @@ def download_dataset_from_hf(config: dict) -> Tuple[Path, Path, Path]:
         Tuple of Paths: (sequences_dir, dna_embeddings_dir, microbiome_embeddings_dir)
     """
     base_repo_url = config["base_repo_url"]
-    download_cache_dir = Path(config["dataset_name"])
-    dataset_repo_url = f"{base_repo_url}/AI4FA-{str(download_cache_dir)}"
+    dataset_name = config["dataset_name"]
+    download_cache_dir = Path(config["download_path"]) / dataset_name
+    if not download_cache_dir.exists():
+        download_cache_dir.mkdir(parents=True, exist_ok=True)
+    dataset_repo_url = f"{base_repo_url}/AI4FA-{str(dataset_name)}"
     csv_filename = config["csv_filename"]
     csv_folder = config["csv_filename"].split(".")[0]
 
