@@ -68,3 +68,10 @@ evaluation:
   grid_search_random_state: 42  # random state for grid search CV
   final_eval_random_state: 123  # DIFFERENT random state for final unbiased evaluation
   save_normalized_cm: true
+
+# Dataset valid filenames
+valid_filenames:
+  - "Tanaka"
+  - "Diabimmune"
+  - "Goldberg"
+  - "Gadir"

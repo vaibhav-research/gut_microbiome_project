@@ -30,6 +30,8 @@ data_preprocessing/dna_embeddings/*
 data_preprocessing/microbiome_embeddings/*
 !data_preprocessing/microbiome_embeddings/.gitkeep
 
+# HuggingFace datasets
+huggingface_datasets/
 
 # Evaluation results
 eval_results/

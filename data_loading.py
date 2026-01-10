@@ -1117,7 +1117,9 @@ def create_dataset_df(dataset_path: Path, microbiome_embeddings_dir: Path):
     return dataset_df
 
 
-def download_dataset_from_hf(config: dict) -> Tuple[Path, Path, Path]:
+def download_dataset_from_hf(
+    config: dict, valid_filenames: dict
+) -> Tuple[Path, Path, Path]:
     """
     Clone or update dataset from Git LFS repository and return paths.
     Args:
@@ -1128,11 +1130,19 @@ def download_dataset_from_hf(config: dict) -> Tuple[Path, Path, Path]:
         Tuple of Paths: (sequences_dir, dna_embeddings_dir, microbiome_embeddings_dir)
     """
     base_repo_url = config["base_repo_url"]
+
     dataset_name = config["dataset_name"]
+    if dataset_name not in valid_filenames:
+        raise ValueError(
+            f"Dataset name '{dataset_name}' not in valid filenames: "
+            f"{list(valid_filenames.keys())}"
+        )
+
     download_cache_dir = Path(config["download_path"]) / dataset_name
     if not download_cache_dir.exists():
         download_cache_dir.mkdir(parents=True, exist_ok=True)
     dataset_repo_url = f"{base_repo_url}/AI4FA-{str(dataset_name)}"
+
     csv_filename = config["csv_filename"]
     csv_folder = config["csv_filename"].split(".")[0]
 
@@ -1166,6 +1176,13 @@ def download_dataset_from_hf(config: dict) -> Tuple[Path, Path, Path]:
     print(f"Dataset ready at {download_cache_dir}")
 
     dataset_path = download_cache_dir / "metadata" / csv_filename
+    if not dataset_path.exists():
+        print("Available files in metadata directory:")
+        for f in (download_cache_dir / "metadata").iterdir():
+            print(f"  {f}")
+        raise FileNotFoundError(
+            f"Dataset CSV file not found at expected path: {dataset_path}"
+        )
     sequences_dir = download_cache_dir / "processed" / "dna_sequences" / csv_folder
     dna_embeddings_dir = (
         download_cache_dir / "processed" / "dna_embeddings" / csv_folder
@@ -1196,7 +1213,9 @@ def load_dataset_df(config: dict) -> pd.DataFrame:
     dataset_path = Path(config["data"]["dataset_path"])
     if config["data"]["hugging_face"]["pull_from_huggingface"]:
         dataset_path, sequences_dir, dna_embeddings_dir, microbiome_embeddings_dir = (
-            download_dataset_from_hf(config["data"]["hugging_face"])
+            download_dataset_from_hf(
+                config["data"]["hugging_face"], config["valid_filenames"]
+            )
         )
     else:
         sequences_dir, dna_embeddings_dir, microbiome_embeddings_dir = build_paths(
